@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+# NOTE: The soundcloud website, if visited unauthorized, 
+#       provides a public client_id and likely oauth token
+CLIENT_ID='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+ACCESS_TOKEN='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
