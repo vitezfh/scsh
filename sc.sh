@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Requires socat,mpv,curl,jq
+
 API_URL='https://api-v2.soundcloud.com'
 
 # NOTE: The soundcloud website, if visited unauthorized, 
@@ -66,6 +68,16 @@ echo $me_id
 
 tracks="$(get_liked_tracks 10)"
 track_streams="$(echo $tracks | jq -r '.media[] | .[] | select(.format.mime_type == "audio/ogg; codecs=\"opus\"") | .url')"
+
+# WIP
+# sleep 0.5
+# for url in ${track_streams} ; do
+#   track="$(get_request $url | jq -r '.url')"
+#   echo
+#   mpc insert "$track"
+#   sleep 1
+# done
+# exit 
 
 _mpv &
 sleep 0.5
