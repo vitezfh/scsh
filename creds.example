@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Copy me to creds and fill out your proper credentials
+
 # NOTE: The soundcloud website, if visited unauthorized, 
 #       provides a public client_id and likely oauth token
 CLIENT_ID='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
