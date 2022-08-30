@@ -4,12 +4,11 @@
 
 API_URL='https://api-v2.soundcloud.com'
 
-# NOTE: The soundcloud website, if visited unauthorized, 
-#       provides a public client_id and likely oauth token
+# NOTE: The soundcloud website, if visiting unauthorized, 
+#       you could provide a public client_id and likely public oauth token?
 CLIENT_ID='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 ACCESS_TOKEN='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
-source creds
-
+[[ -f creds ]] && source creds
 
 get_request() {
   local C_MISC='&app_version=1655450917&app_locale=en'
@@ -31,19 +30,22 @@ get_liked_tracks() {
 
   local limit=${1-1000}
   
-  get_request ${API_URL}/users/$me_id/track_likes "&limit=${limit}$C_OFFSET" \
+  get_request ${API_URL}/users/"$me_id"/track_likes "&limit=${limit}$C_OFFSET" \
     | jq -r .collection[].track
 }
 
 iterate_all_liked_tracks () {
-  for i in {24..14}; do
-    get_liked_tracks 1000 "$(_get_date 20$i-12-29)"
+  # these are years:
+  for year in {2024..2014}; do
+    # get favorited tracks for all above years
+    get_liked_tracks 1000 "$(_get_date "$year"-12-29)"
   done
 }
 
 _mpv() {
   #mpv -vo null --title=scmpv --input-ipc-server=/tmp/scmpvsock --idle=yes "$@" 
-  mpv --title=scmpv --player-operation-mode=pseudo-gui --input-ipc-server=/tmp/scmpvsock --idle=yes "$@" 
+  # mpv --title=scmpv --player-operation-mode=pseudo-gui --input-ipc-server=/tmp/scmpvsock --idle=yes "$@" 
+  mpv --title=scmpv --player-operation-mode=pseudo-gui --input-ipc-server=/tmp/scmpvsock --keep-open "$@" 
 }
 
 _mpv_command() {
@@ -55,36 +57,52 @@ _mpv_command() {
     done
     # closing it up.
     tosend=${tosend%?}' ] }'
-    # send it along and ignore output.
-    # to print output just remove the redirection to /dev/null
-    echo $tosend | socat - /tmp/scmpvsock > /dev/null 2>&1
+    # send it along
+    echo "$tosend" | socat - /tmp/scmpvsock
 }
 
+_mpv_command_silent() {
+    #ignore output
+    # to print output just remove the redirection to /dev/null
+  _mpv_command "$@" > /dev/null 2>&1
+}
+
+_mpv_get_percent_pos() {
+  local percent_pos_float="$(_mpv_command 'get_property' 'percent-pos' | jq -r .data)"
+  echo "${percent_pos_float%.*}"
+}
 
 #get_request /tracks/$TRACK_ID 
 printf 'Getting user-id... '
 me_id=$(get_request ${API_URL}/me | jq -r .id)
-echo $me_id
+echo "$me_id"
 
-tracks="$(get_liked_tracks 10)"
-track_streams="$(echo $tracks | jq -r '.media[] | .[] | select(.format.mime_type == "audio/ogg; codecs=\"opus\"") | .url')"
-
-# WIP
-# sleep 0.5
-# for url in ${track_streams} ; do
-#   track="$(get_request $url | jq -r '.url')"
-#   echo
-#   mpc insert "$track"
-#   sleep 1
-# done
-# exit 
+tracks="$(get_liked_tracks 30)"
+track_streams="$(echo "$tracks" | jq -r '.media[] | .[] | select(.format.mime_type == "audio/ogg; codecs=\"opus\"") | .url')"
 
 _mpv &
 sleep 0.5
+
+# QUEUE MAIN LOOP
 for url in ${track_streams} ; do
-  track="$(get_request $url | jq -r '.url')"
+  track="$(get_request "$url" | jq -r '.url')"
+
+  ### pure mpv version
+  echo appending track...
   _mpv_command 'loadfile' "$track" 'append-play';
-  sleep 1
-  # $(_mpv_command 'get_property' 'percent-pos';)
-  while ! $(_mpv_command 'get_property' 'idle-active' | jq -r .data) true ; do sleep 1 ; done > /dev/null 2>&1
+  sleep 4
+  # while [ "$(_mpv_get_percent_pos)" -le "98" ] || [ "$(_mpv_command 'get_property' 'eof-reached' | jq -r .data)" = "false" ] ; do sleep 3 ; done
+  while [ "$(_mpv_command 'get_property' 'eof-reached' | jq -r .data)" = "false" ] ; do true && sleep 2 ; done
+  
+  ###
+
+  ###### MPC VERSION, WIP
+  ## can perhaps replace the whole _mpv_command logic with "mpc" tool, but
+  ## that's a dependency... See below:
+  # echo inserting track...
+  # mpc insert "$track"
+  # sleep 4
+  ## SOME LOGIC NEEDED HERE TO NOT SPAM TRACKS INTO THE QUEUE... (links for tracks expire)
+  ######
 done
+
