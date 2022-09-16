@@ -10,6 +10,7 @@ CLIENT_ID='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 ACCESS_TOKEN='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 [[ -f creds ]] && source creds
 
+
 get_request() {
   local C_MISC='&app_version=1655450917&app_locale=en'
   local C_CLIENT_ID="?client_id=${CLIENT_ID}"
@@ -42,31 +43,24 @@ iterate_all_liked_tracks () {
   done
 }
 
-_mpv() {
-  #mpv -vo null --title=scmpv --input-ipc-server=/tmp/scmpvsock --idle=yes "$@" 
-  # mpv --title=scmpv --player-operation-mode=pseudo-gui --input-ipc-server=/tmp/scmpvsock --idle=yes "$@" 
-  mpv --title=scmpv --player-operation-mode=pseudo-gui --input-ipc-server=/tmp/scmpvsock --keep-open "$@" 
+_mpv() { 
+  mpv --title=scmpv \
+      --player-operation-mode=pseudo-gui \
+      --input-ipc-server=/tmp/scmpvsock \
+      --keep-open "$@"
 }
 
 _mpv_command() {
-    # JSON preamble.
     local tosend='{ "command": ['
-    # adding in the parameters.
     for arg in "$@"; do
         tosend="$tosend \"$arg\","
     done
-    # closing it up.
     tosend=${tosend%?}' ] }'
-    # send it along
     echo "$tosend" | socat - /tmp/scmpvsock
 }
-
-_mpv_command_silent() {
-    #ignore output
-    # to print output just remove the redirection to /dev/null
-  _mpv_command "$@" > /dev/null 2>&1
+_mpv_command_silent() { 
+  _mpv_command "$@" > /dev/null 2>&1 
 }
-
 _mpv_get_percent_pos() {
   local percent_pos_float="$(_mpv_command 'get_property' 'percent-pos' | jq -r .data)"
   echo "${percent_pos_float%.*}"
@@ -80,29 +74,26 @@ echo "$me_id"
 tracks="$(get_liked_tracks 30)"
 track_streams="$(echo "$tracks" | jq -r '.media[] | .[] | select(.format.mime_type == "audio/ogg; codecs=\"opus\"") | .url')"
 
-_mpv &
-sleep 0.5
+[ "$MPV_MODE" = 1 ] && _mpv &
 
+sleep 0.5
 # QUEUE MAIN LOOP
 for url in ${track_streams} ; do
+
   track="$(get_request "$url" | jq -r '.url')"
-
-  ### pure mpv version
-  echo appending track...
-  _mpv_command 'loadfile' "$track" 'append-play';
-  sleep 4
-  # while [ "$(_mpv_get_percent_pos)" -le "98" ] || [ "$(_mpv_command 'get_property' 'eof-reached' | jq -r .data)" = "false" ] ; do sleep 3 ; done
-  while [ "$(_mpv_command 'get_property' 'eof-reached' | jq -r .data)" = "false" ] ; do true && sleep 2 ; done
   
-  ###
-
-  ###### MPC VERSION, WIP
-  ## can perhaps replace the whole _mpv_command logic with "mpc" tool, but
-  ## that's a dependency... See below:
-  # echo inserting track...
-  # mpc insert "$track"
-  # sleep 4
-  ## SOME LOGIC NEEDED HERE TO NOT SPAM TRACKS INTO THE QUEUE... (links for tracks expire)
-  ######
+  echo appending track...
+  set +x
+  if [ "$MPV_MODE" = "1" ] ; then
+    _mpv_command 'loadfile' "$track" 'append-play';
+    while [ "$(_mpv_command 'get_property' 'eof-reached' | jq -r .data)" = "false" ] ; do true && sleep 2 ; done
+  fi
+  if [ "$MPV_MODE" = "0" ] || [ -z "$MPV_MODE" ] ; then 
+    mpc insert "$track"
+    sleep 4
+    ## SOME LOGIC NEEDED HERE TO NOT SPAM TRACKS INTO THE QUEUE... (links for tracks expire)
+    while [ ! "$(mpc status '%songpos%')" = "$(mpc status '%length%')" ] ; do sleep 8 ; done 
+  fi
+  set -x
 done
 
